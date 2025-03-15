@@ -345,10 +345,16 @@ function handleWebSocketMessage(data) {
                         messageQueue.push("milimi3Hmph");
                         processQueue(); // Start processing messages
                     }
+					if (messageText == "!raidmsg") {                        
+                        // Add message to the queue
+                        messageQueue.push("MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid");
+						messageQueue.push("MILIRAID 🐰 MILIRAID 🐰 MILIRAID 🐰 MILIRAID 🐰")
+                        processQueue(); // Start processing messages
+                    }
 
 					if (messageText == "!commands") {                        
                         // Add message to the queue
-                        messageQueue.push("Command list: 8ball balls commands freaky isprime rng");
+                        messageQueue.push("Command list: 8ball balls commands freaky isprime raidmsg rng");
                         processQueue(); // Start processing messages
                     }
 
