@@ -5,12 +5,17 @@ const http = require("http")
 const fs = require("fs");
 const qs = require("querystring")
 
+// Env
 const BOT_USER_ID = process.env.TW_BOT_USER_ID;
 const CLIENT_ID = process.env.TW_CLIENT_ID;
 const CLIENT_SECRET = process.env.TW_CLIENT_SECRET;
 
 const CHAT_CHANNEL_USER_ID = process.env.TW_CHANNEL_USER_ID;
 
+const authorizedUsers = new Set(process.env.AUTHORIZED_USERS.split(','));
+
+
+// Main definitions
 const SCOPES = "user:bot user:read:chat user:write:chat";
 const REDIRECT_URI = "http://localhost:3000"
 const TOKEN_FILE = "tokens.json";
@@ -24,14 +29,15 @@ let accessToken = null;
 let refreshToken = null;
 let tokenExpiration = 0;
 
-let messageQueue = [];   // Queue to hold pending messages
+
+// Bot definitions
+let messageQueue = [];
 
 const MESSAGE_LIMIT = 100;
-const TIME_WINDOW = 30 * 1000; // 30 seconds in milliseconds
-let messageTimestamps = []; // Stores timestamps of sent messages
+const TIME_WINDOW = 30 * 1000; // 30 seconds
+let messageTimestamps = [];
 
-let commandsEnabled = true; // Flag to track if commands are enabled
-const authorizedUsers = process.env.AUTHORIZED_USERS.split(',');
+let commandsEnabled = true;
 
 const greetingMessages = [
     "milimi3Wiggle1",
@@ -45,35 +51,25 @@ const cuttingBoards = [
 
 
 // Command vars
-let lastScatterTime = 0; // Tracks the last time "SCATTER" was triggered
+// Scatter
+let lastScatterTime = 0;
 const SCATTER_COOLDOWN = 60 * 1000; // 1 minute cooldown
 
-const triggerPhrases = ["milimi3Kiss", "milimi3Wiggle1", "milimi3Headpat", "milimi3Ghost1", "milimi3Stare", "milimi3Flicker", "milimi3Hype1", "milimi3Hallo", "milimi3Hmph", "milimi3Bleh", "milimi3Hydrate", "milimi3Bunbundancey", "milimi3Headpat", "milimi3Popcorn", "milimi3Lick", "milimi3Run", "milimi3Taptap", "milimi3Hug"]; // Add more phrases as needed
-const phraseCooldowns = {}; // Stores last used timestamps for each phrase
-const PHRASE_COOLDOWN = 60 * 1000; // 1 minute cooldown per phrase
+// Emote repeats
+const triggerPhrases = new Set(["milimi3Kiss", "milimi3Wiggle1", "milimi3Headpat", "milimi3Ghost1", "milimi3Stare", "milimi3Flicker", "milimi3Hype1", "milimi3Hallo", "milimi3Hmph", "milimi3Bleh", "milimi3Hydrate", "milimi3Bunbundancey", "milimi3Headpat", "milimi3Popcorn", "milimi3Lick", "milimi3Run", "milimi3Taptap", "milimi3Hug"]);
+const phraseCooldowns = {};
+const PHRASE_COOLDOWN = 60 * 1000; // 1 minute
 
 
+// Other
+const greetingCooldown = 10 * 60 * 1000; // 10 minutes
 let lastChatTimestamp = 0;
-const ignoredUsers = ["streamelements", "sery_bot", "cutebnuuybot", "soundalerts"];
+const ignoredUsers = new Set(["streamelements", "sery_bot", "cutebnuuybot", "soundalerts"]);
 
 
 
-// Start executing the bot from here
-(async () => {
-	
-	loadTokens();
-	if (!accessToken) {
-		await getToken()
-	}
 
-	// Verify that the authentication is valid
-	await validateAuth();
-
-	// Start WebSocket client and register handlers
-	const websocketClient = startWebSocketClient();
-})();
-
-// WebSocket will persist the application loop until you exit the program forcefully
+// Auth Handlers
 
 async function validateAuth() {
 	const now = Date.now() / 1000
@@ -98,9 +94,10 @@ async function validateAuth() {
 }
 
 async function refreshAuth() {
+	let response
 	try {
         console.log("Refreshing token...");
-        const response = await fetch('https://id.twitch.tv/oauth2/token', {
+        response = await fetch('https://id.twitch.tv/oauth2/token', {
 			method: 'POST',
 			body: new URLSearchParams({
 				client_id: CLIENT_ID,
@@ -110,17 +107,19 @@ async function refreshAuth() {
 			}),
 		});
 		
-        accessToken = response.data.access_token;
-        refreshToken = response.data.refresh_token;
-        tokenExpiration = Date.now() / 1000 + response.data.expires_in; // In seconds
+		data = await response.json()
+        accessToken = data.access_token;
+        refreshToken = data.refresh_token;
+        tokenExpiration = Date.now() / 1000 + data.expires_in;
         saveTokens();
 
         console.log("Token refreshed successfully.");
         return accessToken;
     } catch (error) {
         console.error("Error refreshing token:", error.response?.data || error.message);
-        return null;
-    }
+		console.log(response)
+        process.exit()
+	}
 }
 
 async function getToken() {
@@ -132,26 +131,26 @@ async function getToken() {
         console.log("Visit this URL to authorize the app:");
         console.log(authUrl);
 
-        // Set up a simple HTTP server to listen for the redirect
+        // HTTP server
         const server = http.createServer(async (req, res) => {
             const query = qs.parse(req.url.split("?")[1]);
             const { code, state } = query;
 
             if (state === STATE) { // Check if the state matches
-                console.log("Authorization code received:", code);
-                await getTokenFromCode(code); // Call the function to exchange the code for tokens
-                resolve(); // Resolve the promise after successfully getting the token
+                await getTokenFromCode(code);
+                resolve();
             } else {
                 console.error("State does not match!");
-                reject(new Error("State does not match!")); // Reject the promise if the state does not match
+                reject(new Error("State does not match!"));
+				process.end()
             }
 
             res.writeHead(200, { "Content-Type": "text/plain" });
             res.end("Authorization complete. You can close this window.");
-            server.close(); // Close the server after handling the redirect
+            server.close();
         });
 
-        // Start the server on port 3000
+        // Start the server
         server.listen(3000, () => {
             console.log("Listening for redirect on http://localhost:3000");
         });
@@ -172,18 +171,23 @@ async function getTokenFromCode(authCode) {
 		});
 
         // Handle token storage
-        accessToken = response.data.access_token;
-        refreshToken = response.data.refresh_token;
-        tokenExpiration = Date.now() / 1000 + response.data.expires_in; // In seconds
+		data = await response.json()
+        accessToken = data.access_token;
+        refreshToken = data.refresh_token;
+        tokenExpiration = Date.now() / 1000 + data.expires_in; // In seconds
         saveTokens();
 
         console.log("New token obtained successfully.");
         return accessToken;
     } catch (error) {
         console.error("Error obtaining access token:", error.response?.data || error.message);
-        return null;
+        process.exit()
     }
 }
+
+
+
+// Websocket Handlers
 
 function startWebSocketClient() {
 	let websocketClient = new WebSocket(EVENTSUB_WEBSOCKET_URL);
@@ -202,73 +206,65 @@ function startWebSocketClient() {
 }
 
 function handleWebSocketMessage(data) {
+	
 	switch (data.metadata.message_type) {
-		case 'session_welcome': // First message you get from the WebSocket server when connecting
-			websocketSessionID = data.payload.session.id; // Register the Session ID it gives us
+		case 'session_welcome':
+			websocketSessionID = data.payload.session.id; // Register Session ID
 
-			// Listen to EventSub, which joins the chatroom from your bot's account
+			// Listen to EventSub
 			registerEventSubListeners();
 			break;
-		case 'notification': // An EventSub notification has occurred, such as channel.chat.message
+		
+		case 'notification':
+			
 			switch (data.metadata.subscription_type) {
 				case 'channel.chat.message':
+					
 					const username = data.payload.event.chatter_user_login;
     				const messageText = data.payload.event.message.text.trim();
 
+					const now = Date.now()
 
+					// Admin Commands
+					if (authorizedUsers.has(username)) {
+						if (messageText.startsWith("!enable")) {
+						
+							const statusMessage = commandsEnabled ? "Commands are already enabled." : "Commands are now enabled.";
+							commandsEnabled = true;
+							messageQueue = [statusMessage];
+							
+							processQueue();
+							break;
+						}
+	
+						if (messageText.startsWith("!disable")) {
+						
+							const statusMessage = commandsEnabled ? "Commands are now disabled." : "Commands are already disabled.";
+							commandsEnabled = false;
+							messageQueue = [statusMessage];
+							
+							processQueue();
+							break;
+						}
 
-                    if (messageText.startsWith("!enable")) {
-                    
-                        if (authorizedUsers.includes(username)) {
-                            const statusMessage = commandsEnabled ? "Commands are already enabled." : "Commands are now enabled.";
-                            commandsEnabled = true; // Toggle the command state
-                            messageQueue = [statusMessage]; // Queue the status message
-                        }
-                        
-                        processQueue(); // Start processing messages
-                    }
+						if (messageText.startsWith("!bbotclear")) {
+							messageQueue.push("!vanish")
+							processQueue();
+							break;
+						}
+					}
 
-                    if (messageText.startsWith("!disable")) {
-                    
-                        if (authorizedUsers.includes(username)) {
-                            const statusMessage = commandsEnabled ? "Commands are now disabled." : "Commands are already disabled.";
-                            commandsEnabled = false; // Toggle the command state
-                            messageQueue = [statusMessage]; // Queue the status message
-                        }
-                        
-                        processQueue(); // Start processing messages
-                    }
-
-                    if (commandsEnabled == false) {
+					
+					if (ignoredUsers.has(username) || !commandsEnabled) {
                         break;
                     }
                     
-					const now = Date.now();
-					if (!ignoredUsers.includes(username)) {
-						const greetingCooldown = 10 * 60 * 1000; // 10 minutes
-				
-						// Check if 10 minutes have passed since the last message
-						if (now - lastChatTimestamp > greetingCooldown) {
-				
-							// Prevent greeting if the message starts with '!' or contains a trigger phrase
-							const containsTriggerPhrase = triggerPhrases.some(phrase => messageText.includes(phrase));
-				
-							if (!messageText.startsWith("!") && !containsTriggerPhrase) {
-								// Pick a random greeting
-								const randomGreeting = greetingMessages[Math.floor(Math.random() * greetingMessages.length)]
-									.replace("{user}", username);
-				
-								// Queue the greeting message
-								messageQueue.push(randomGreeting);
-								processQueue();
-							}
-						}
-					}
-					lastChatTimestamp = now; // Update last message timestamp
 
 
 					if (messageText.startsWith("!rng")) {
-                        const args = messageText.split(" ").slice(1); // Remove "!rng"
+						console.log("Command RNG triggered by " + username)
+                        
+						const args = messageText.split(" ").slice(1); // Remove "!rng"
                         let min = 1, max = 1000, prefix = "Random number";
                         let rangeFound = false;
                     
@@ -295,10 +291,14 @@ function handleWebSocketMessage(data) {
                         
                         // Add message to queue
                         messageQueue.push(message);
-                        processQueue(); // Start processing messages
+                        processQueue();
+						break;
                     }
 
                     if (messageText.startsWith("!isprime")) {
+						
+						console.log("Command isprime triggered by " + username)
+
                         const args = messageText.split(" ").slice(1); // Remove "!isprime"
                         
                         if (args.length === 0) {
@@ -314,11 +314,14 @@ function handleWebSocketMessage(data) {
                             }
                         }
                     
-                        processQueue(); // Start processing messages
+                        processQueue();
+						break;
                     }
 
 					if (messageText.startsWith("!8ball")) {
-						const username = data.payload.event.chatter_user_login; // Get the username of the sender
+
+						console.log("Command 8ball triggered by " + username)
+
 						const responses = [
 							"It is certain.", "Without a doubt.", "You may rely on it.", 
 							"Yes, definitely.", "It is decidedly so.", "As I see it, yes.", 
@@ -332,66 +335,91 @@ function handleWebSocketMessage(data) {
 					
 						const randomResponse = responses[Math.floor(Math.random() * responses.length)];
 						messageQueue.push(`@${username}, 🎱 ${randomResponse}`);
-						processQueue(); // Start processing messages
+						processQueue();
+						break;
 					}                    
 
-                    if (messageText == "!freaky") {                        
-                        // Add message to the queue
+                    if (messageText == "!freaky") { 
+						console.log("Command freaky triggered by " + username)                       
                         messageQueue.push("😏");
-                        processQueue(); // Start processing messages
+                        processQueue();
+						break;
                     }
-					if (messageText == "!balls") {                        
-                        // Add message to the queue
+					if (messageText == "!balls") {
+						console.log("Command balls triggered by " + username)                    
                         messageQueue.push("milimi3Hmph");
-                        processQueue(); // Start processing messages
+                        processQueue();
+						break;
                     }
-					if (messageText == "!raidmsg") {                        
-                        // Add message to the queue
+					if (messageText == "!raidmsg") {   
+						console.log("Command raidmsg triggered by " + username)                     
                         messageQueue.push("MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid");
 						messageQueue.push("MILIRAID 🐰 MILIRAID 🐰 MILIRAID 🐰 MILIRAID 🐰")
-                        processQueue(); // Start processing messages
+                        processQueue();
+						break;
                     }
 
-					if (messageText == "!commands") {                        
-                        // Add message to the queue
+					if (messageText == "!commands") {  
+						console.log("Command list triggered by " + username)                      
                         messageQueue.push("Command list: 8ball balls commands freaky isprime raidmsg rng");
-                        processQueue(); // Start processing messages
+                        processQueue();
+						break;
                     }
 
-					if (messageText.toUpperCase() === "SCATTER") {
-						const now = Date.now();
 					
+					
+					// Phrases
+					if (messageText === "SCATTER") {	
+						console.log("SCATTER triggered by " + username)			
 						if (now - lastScatterTime >= SCATTER_COOLDOWN) {
-							messageQueue.push("SCATTER"); // Repeat the message
-							lastScatterTime = now; // Update the last triggered time
-							processQueue(); // Start processing messages
+							messageQueue.push("SCATTER");
+							lastScatterTime = now;
+							processQueue();
+							break; 
 						}
 					}
+
+					if (messageText.toLowerCase().includes("cutting board")) {
+						console.log("Cutting board triggered by " + username)
+						const cutMessage = cuttingBoards[Math.floor(Math.random() * cuttingBoards.length)]
+							.replace("{user}", username);
+						messageQueue.push(cutMessage);
+						processQueue();
+						break;
+					}
+
+					let messagePhrases = []
+					for (const phrase of triggerPhrases) {
+						if (messageText.includes(phrase)) {
 					
-
-					if (username != "cutebnuuybot") {
-						if (messageText.toLowerCase().includes("cutting board")) {
-							const cutMessage = cuttingBoards[Math.floor(Math.random() * cuttingBoards.length)]
-								.replace("{user}", username);
-							messageQueue.push(cutMessage);
-							processQueue();
-							break;
-						}
-
-						for (const phrase of triggerPhrases) {
-							if (messageText.includes(phrase)) {
-								const now = Date.now();
-						
-								// Check cooldown for this specific phrase
-								if (!phraseCooldowns[phrase] || now - phraseCooldowns[phrase] >= PHRASE_COOLDOWN) {
-									messageQueue.push(phrase); // Repeat the phrase
-									phraseCooldowns[phrase] = now; // Update cooldown time
-									processQueue(); // Process messages
-								}
-								break;
+							// Check cooldown for this trigger
+							if (!phraseCooldowns[phrase] || now - phraseCooldowns[phrase] >= PHRASE_COOLDOWN) {
+								messagePhrases.push(phrase);
+								phraseCooldowns[phrase] = now;
 							}
 						}
 					}
+					if (!messagePhrases.length === 0) {
+						console.log("Phrase triggered by " + username + ": " + messagePhrases.join(' '))
+						messageQueue.push(messagePhrases.join(' '))
+						processQueue()
+						break;
+					}
+					
+					// Greeting
+					if (now - lastChatTimestamp > greetingCooldown) {
+						
+						console.log("Greeting triggered by " + username)
+
+						// Pick a random greeting
+						const randomGreeting = greetingMessages[Math.floor(Math.random() * greetingMessages.length)]
+							.replace("{user}", username);
+		
+						messageQueue.push(randomGreeting);
+						processQueue();
+					}
+
+					lastChatTimestamp = now; // Update cooldown
 
 					break;
 			}
@@ -402,10 +430,10 @@ function handleWebSocketMessage(data) {
 function checkPrime(num) {
     for (let i = 2; i <= Math.sqrt(num); i++) {
         if (num % i === 0) {
-            return false; // Not a prime number
+            return false;
         }
     }
-    return true; // It's a prime number
+    return true;
 }
 
 function processQueue() {
@@ -418,10 +446,9 @@ function processQueue() {
 
     if (messageTimestamps.length < MESSAGE_LIMIT) {
             sendChatMessage(messageQueue.shift());
-            messageTimestamps.push(now); // Store the timestamp of the sent message
+            messageTimestamps.push(now); // Timestamp
 			processQueue();
     } else {
-        // If rate limit reached, wait and try again
         setTimeout(processQueue, (messageTimestamps[0] + TIME_WINDOW - now));
     }
 }
@@ -450,7 +477,7 @@ async function sendChatMessage(chatMessage) {
 		console.error("Failed to send chat message");
 		console.error(data);
 	} else {
-		console.log("Sent chat message: " + chatMessage);
+		console.log("Sent message: " + chatMessage);
 	}
 }
 
@@ -505,3 +532,16 @@ function saveTokens() {
         token_expiration: tokenExpiration,
     }, null, 2));
 }
+
+
+// Main
+(async () => {
+	
+	loadTokens();
+	if (!accessToken) {
+		await getToken()
+	}
+
+	await validateAuth();
+	const websocketClient = startWebSocketClient();
+})();
