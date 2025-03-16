@@ -8,6 +8,8 @@ const EVENTSUB_WEBSOCKET_URL = 'wss://eventsub.wss.twitch.tv/ws';
 
 var websocketSessionID;
 
+let keepaliveDuration
+let keepaliveTimeout
 
 // Bot definitions
 let messageQueue = [];
@@ -63,7 +65,7 @@ async function startWebSocketClient() {
 	});
 
 	websocketClient.on('message', (data) => {
-		handleWebSocketMessage(JSON.parse(data.toString()));
+		handleWebSocketMessage(JSON.parse(data.toString()), websocketClient);
 	});
 
 	websocketClient.on('close', (code, reason) => {
@@ -73,14 +75,21 @@ async function startWebSocketClient() {
 	return websocketClient;
 }
 
-function handleWebSocketMessage(data) {
+function handleWebSocketMessage(data, websocketClient) {
+
+	if (keepaliveTimeout) {
+		resetKeepAlive()
+		console.log('Alive!')
+	}
 	
 	switch (data.metadata.message_type) {
 		case 'session_welcome':
 			websocketSessionID = data.payload.session.id; // Register Session ID
+			keepaliveDuration = data.payload.session.keepalive_timeout_seconds;
 
 			// Listen to EventSub
 			registerEventSubListeners();
+			resetKeepAlive(websocketClient);
 			break;
 		
 		case 'notification':
@@ -384,6 +393,14 @@ async function registerEventSubListeners() {
 		const data = await response.json();
 		console.log(`Subscribed to channel.chat.message [${data.data[0].id}]`);
 	}
+}
+
+function resetKeepAlive(websocketClient) {
+	if (keepaliveTimeout) clearTimeout(keepaliveTimeout);
+	keepaliveTimeout = setTimeout(() => {
+		console.warn("Keepalive timed out.")
+		websocketClient.close(4000, "Keepalive timeout");
+	}, keepaliveDuration * 1000 * 2)
 }
 
 module.exports = {
