@@ -3,6 +3,8 @@ const WebSocket = require('ws');
 const env = require("./env")
 const auth = require("./auth")
 
+const { logger } = require("./logger")
+
 // Main definitions
 const EVENTSUB_WEBSOCKET_URL = 'wss://eventsub.wss.twitch.tv/ws';
 
@@ -10,6 +12,7 @@ var websocketSessionID;
 
 let keepaliveDuration
 let keepaliveTimeout
+let keepAliveCount = 0
 
 // Bot definitions
 let messageQueue = [];
@@ -61,7 +64,7 @@ async function startWebSocketClient() {
 	websocketClient.on('error', console.error);
 
 	websocketClient.on('open', () => {
-		console.log('WebSocket connection opened to ' + EVENTSUB_WEBSOCKET_URL);
+		logger('WebSocket connection opened to ' + EVENTSUB_WEBSOCKET_URL);
 	});
 
 	websocketClient.on('message', (data) => {
@@ -69,18 +72,13 @@ async function startWebSocketClient() {
 	});
 
 	websocketClient.on('close', (code, reason) => {
-		console.log(`WebSocket closed with code ${code}: ${reason}`)
+		logger(`WebSocket closed with code ${code}: ${reason}`, 'error')
 	});
 
 	return websocketClient;
 }
 
 function handleWebSocketMessage(data, websocketClient) {
-
-	if (keepaliveTimeout) {
-		resetKeepAlive()
-		console.log('Alive!')
-	}
 	
 	switch (data.metadata.message_type) {
 		case 'session_welcome':
@@ -90,6 +88,11 @@ function handleWebSocketMessage(data, websocketClient) {
 			// Listen to EventSub
 			registerEventSubListeners();
 			resetKeepAlive(websocketClient);
+			break;
+		
+		case 'session_keepalive':
+			keepAliveCount++
+			logger(`[KeepAlive] #${keepAliveCount}`, 'blank', 1);
 			break;
 		
 		case 'notification':
@@ -141,7 +144,7 @@ function handleWebSocketMessage(data, websocketClient) {
 
 
 					if (messageText.startsWith("!rng")) {
-						console.log("Command RNG triggered by " + username)
+						logger("Command RNG triggered by " + username)
                         
 						const args = messageText.split(" ").slice(1); // Remove "!rng"
                         let min = 1, max = 1000, prefix = "Random number";
@@ -176,7 +179,7 @@ function handleWebSocketMessage(data, websocketClient) {
 
                     if (messageText.startsWith("!isprime")) {
 						
-						console.log("Command isprime triggered by " + username)
+						logger("Command isprime triggered by " + username)
 
                         const args = messageText.split(" ").slice(1); // Remove "!isprime"
                         
@@ -199,7 +202,7 @@ function handleWebSocketMessage(data, websocketClient) {
 
 					if (messageText.startsWith("!8ball")) {
 
-						console.log("Command 8ball triggered by " + username)
+						logger("Command 8ball triggered by " + username)
 
 						const responses = [
 							"It is certain.", "Without a doubt.", "You may rely on it.", 
@@ -219,19 +222,19 @@ function handleWebSocketMessage(data, websocketClient) {
 					}                    
 
                     if (messageText == "!freaky") { 
-						console.log("Command freaky triggered by " + username)                       
+						logger("Command freaky triggered by " + username)                       
                         messageQueue.push("😏");
                         processQueue();
 						break;
                     }
 					if (messageText == "!balls") {
-						console.log("Command balls triggered by " + username)                    
+						logger("Command balls triggered by " + username)                    
                         messageQueue.push("milimi3Hmph");
                         processQueue();
 						break;
                     }
 					if (messageText == "!raidmsg") {   
-						console.log("Command raidmsg triggered by " + username)                     
+						logger("Command raidmsg triggered by " + username)                     
                         messageQueue.push("MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid");
 						messageQueue.push("MILIRAID 🐰 MILIRAID 🐰 MILIRAID 🐰 MILIRAID 🐰")
                         processQueue();
@@ -239,7 +242,7 @@ function handleWebSocketMessage(data, websocketClient) {
                     }
 
 					if (messageText == "!commands") {  
-						console.log("Command list triggered by " + username)                      
+						logger("Command list triggered by " + username)                      
                         messageQueue.push("Command list: 8ball balls commands freaky isprime raidmsg rng");
                         processQueue();
 						break;
@@ -249,7 +252,7 @@ function handleWebSocketMessage(data, websocketClient) {
 					
 					// Phrases
 					if (messageText === "SCATTER") {	
-						console.log("SCATTER triggered by " + username)			
+						logger("SCATTER triggered by " + username)			
 						if (now - lastScatterTime >= SCATTER_COOLDOWN) {
 							messageQueue.push("SCATTER");
 							lastScatterTime = now;
@@ -259,7 +262,7 @@ function handleWebSocketMessage(data, websocketClient) {
 					}
 
 					if (messageText.toLowerCase().includes("cutting board") || messageText.toLowerCase().includes("chopping board")) {
-						console.log("Cutting board triggered by " + username)
+						logger("Cutting board triggered by " + username)
 						const cutMessage = cuttingBoards[Math.floor(Math.random() * cuttingBoards.length)]
 							.replace("{user}", "@" + username);
 						messageQueue.push(cutMessage);
@@ -279,7 +282,7 @@ function handleWebSocketMessage(data, websocketClient) {
 						}
 					}
 					if (messagePhrases.length > 0) {
-						console.log("Phrase triggered by " + username + ": " + messagePhrases.join(' '))
+						logger("Phrase triggered by " + username + ": " + messagePhrases.join(' '))
 						messageQueue.push(messagePhrases.join(' '))
 						processQueue()
 						break;
@@ -288,7 +291,7 @@ function handleWebSocketMessage(data, websocketClient) {
 					// Greeting
 					if (now - previousChatTimestamp > greetingCooldown) {
 						
-						console.log("Greeting triggered by " + username)
+						logger("Greeting triggered by " + username)
 
 						// Pick a random greeting
 						const randomGreeting = greetingMessages[Math.floor(Math.random() * greetingMessages.length)]
@@ -301,10 +304,13 @@ function handleWebSocketMessage(data, websocketClient) {
 					
 					break;
 				default:
-					console.log(data)
+					logger(data)
 			}
 			break;
-	}
+	};
+
+	if (keepaliveTimeout) resetKeepAlive(websocketClient);
+
 }
 
 function checkPrime(num) {
@@ -354,10 +360,10 @@ async function sendChatMessage(chatMessage) {
 	}
 	else if (response.status != 200) {
 		let data = await response.json();
-		console.error("Failed to send chat message");
+		logger("Failed to send chat message", 'error');
 		console.error(data);
 	} else {
-		console.log("Sent message: " + chatMessage);
+		logger(`Sent message: ${chatMessage}`);
 	}
 }
 
@@ -391,14 +397,14 @@ async function registerEventSubListeners() {
 		process.exit(1);
 	} else {
 		const data = await response.json();
-		console.log(`Subscribed to channel.chat.message [${data.data[0].id}]`);
+		logger(`Subscribed to channel.chat.message [${data.data[0].id}]`);
 	}
 }
 
 function resetKeepAlive(websocketClient) {
 	if (keepaliveTimeout) clearTimeout(keepaliveTimeout);
 	keepaliveTimeout = setTimeout(() => {
-		console.warn("Keepalive timed out.")
+		logger("Keepalive timed out.", 'warn')
 		websocketClient.close(4000, "Keepalive timeout");
 	}, keepaliveDuration * 1000 * 2)
 }

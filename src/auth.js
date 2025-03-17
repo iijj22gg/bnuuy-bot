@@ -3,6 +3,7 @@ const fs = require("fs");
 const qs = require("querystring")
 
 const env = require("./env")
+const { logger } = require("./logger")
 
 let accessToken = null;
 let refreshToken = null;
@@ -31,20 +32,20 @@ async function validateAuth() {
     
     switch (response.status) {
         case 200:
-            console.log("Validated token.");
+            logger("Validated token.");
             break;
         case 401:
             await refreshAuth()
             break;
         default:
-            console.error(data)
+            logger(data, 'error')
     }
 }
 
 async function refreshAuth() {
     let response
     try {
-        console.log("Refreshing token...");
+        logger("Refreshing token...");
         response = await fetch('https://id.twitch.tv/oauth2/token', {
             method: 'POST',
             body: new URLSearchParams({
@@ -61,11 +62,11 @@ async function refreshAuth() {
         tokenExpiration = Date.now() / 1000 + data.expires_in;
         saveTokens();
 
-        console.log("Token refreshed successfully.");
+        logger("Token refreshed successfully.");
         return accessToken;
     } catch (error) {
-        console.error("Error refreshing token:", error.response?.data || error.message);
-        console.log(response)
+        logger(`Error refreshing token: ${error.response?.data || error.message}`, 'error');
+        logger(response, 'error')
         process.exit()
     }
 }
@@ -76,8 +77,8 @@ async function getToken() {
         const STATE = Math.random().toString(36).substring(2); // Random state for security
         const authUrl = `https://id.twitch.tv/oauth2/authorize?response_type=code&client_id=${env.CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${encodeURIComponent(SCOPES)}&state=${STATE}`;
         
-        console.log("Visit this URL to authorize the app:");
-        console.log(authUrl);
+        logger("Visit this URL to authorize the app:", 'blank');
+        logger(authUrl, 'blank');
 
         // HTTP server
         const server = http.createServer(async (req, res) => {
@@ -88,7 +89,7 @@ async function getToken() {
                 await getTokenFromCode(code);
                 resolve();
             } else {
-                console.error("State does not match!");
+                logger("State does not match!", 'error');
                 reject(new Error("State does not match!"));
                 process.end()
             }
@@ -100,7 +101,7 @@ async function getToken() {
 
         // Start the server
         server.listen(3000, () => {
-            console.log("Listening for redirect on http://localhost:3000");
+            logger("Listening for redirect on http://localhost:3000");
         });
     });
 }
@@ -125,10 +126,10 @@ async function getTokenFromCode(authCode) {
         tokenExpiration = Date.now() / 1000 + data.expires_in; // In seconds
         saveTokens();
 
-        console.log("New token obtained successfully.");
+        logger("New token obtained successfully.");
         return accessToken;
     } catch (error) {
-        console.error("Error obtaining access token:", error.response?.data || error.message);
+        logger(`Error obtaining access token: ${error.response?.data || error.message}`);
         process.exit()
     }
 }
