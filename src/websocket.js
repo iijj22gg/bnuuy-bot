@@ -34,6 +34,8 @@ const cuttingBoards = [
     "{user}, why do you bully Mili in this way?"
 ];
 
+let hydrateTimeout
+let chatTimeout
 
 // Command vars
 // Scatter
@@ -49,7 +51,7 @@ const PHRASE_COOLDOWN = 60 * 1000; // 1 minute
 // Other
 const greetingCooldown = 10 * 60 * 1000; // 10 minutes
 let lastChatTimestamp = 0;
-const ignoredUsers = new Set(["streamelements", "sery_bot", "cutebnuuybot", "soundalerts"]);
+const ignoredUsers = new Set(["streamelements", "sery_bot", "cutebnuuybot"]);
 
 
 
@@ -106,6 +108,11 @@ function handleWebSocketMessage(data, websocketClient) {
 					const now = Date.now()
 					let previousChatTimestamp = lastChatTimestamp
 					lastChatTimestamp = now;
+
+					if (chatTimeout) clearTimeout(chatTimeout);
+					chatTimeout = setTimeout(() => {
+						clearTimeout(hydrateTimeout)
+					}, 600000)
 
 					// Admin Commands
 					if (env.authorizedUsers.has(username)) {
@@ -268,6 +275,20 @@ function handleWebSocketMessage(data, websocketClient) {
 						messageQueue.push(cutMessage);
 						processQueue();
 						break;
+					}
+
+					if (username == 'soundalerts' && messageText.includes('Hydrate')) {
+						logger('Hydrate timeout reset')
+						if (hydrateTimeout) clearTimeout(hydrateTimeout); 
+						hydrateTimeout = setTimeout(() => {
+							logger("Hydrate timeout reached")
+							messageQueue.push('No one has hydrated Mili for 30 minutes! milimi3Nervous')
+							hydrateTimeout = setTimeout(() => {
+								logger('Hydrate timout 2 reached')
+								messageQueue.push('No one has hydrated Mili for 1 hour! milimi3Cry')
+							}, 1800000)
+						}, 1800000);
+						break
 					}
 
 					let messagePhrases = []
