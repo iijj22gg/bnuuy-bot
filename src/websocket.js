@@ -283,9 +283,11 @@ function handleWebSocketMessage(data, websocketClient) {
 						hydrateTimeout = setTimeout(() => {
 							logger("Hydrate timeout reached")
 							messageQueue.push('No one has hydrated Mili for 30 minutes! milimi3Nervous')
+							processQueue()
 							hydrateTimeout = setTimeout(() => {
 								logger('Hydrate timout 2 reached')
 								messageQueue.push('No one has hydrated Mili for 1 hour! milimi3Cry')
+								processQueue()
 							}, 1800000)
 						}, 1800000);
 						break
