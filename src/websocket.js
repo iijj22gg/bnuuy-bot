@@ -240,6 +240,12 @@ function handleWebSocketMessage(data, websocketClient) {
                         processQueue();
 						break;
                     }
+					if (messageText == "!github") {
+						logger("Command github triggered by " + username)                    
+                        messageQueue.push("BnuuyBot's code: https://github.com/iijj22gg/bnuuy-bot");
+                        processQueue();
+						break;
+                    }
 					if (messageText == "!raidmsg") {   
 						logger("Command raidmsg triggered by " + username)                     
                         messageQueue.push("MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid");
@@ -250,7 +256,7 @@ function handleWebSocketMessage(data, websocketClient) {
 
 					if (messageText == "!commands") {  
 						logger("Command list triggered by " + username)                      
-                        messageQueue.push("Command list: 8ball balls commands freaky isprime raidmsg rng");
+                        messageQueue.push("Command list: 8ball balls commands freaky github isprime raidmsg rng");
                         processQueue();
 						break;
                     }
