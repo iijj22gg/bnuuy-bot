@@ -16,6 +16,7 @@ let keepAliveCount = 0
 
 // Bot definitions
 let messageQueue = [];
+isProcessing = false
 
 const MESSAGE_LIMIT = 100;
 const TIME_WINDOW = 30 * 1000; // 30 seconds
@@ -137,7 +138,14 @@ function handleWebSocketMessage(data, websocketClient) {
 						}
 
 						if (messageText.startsWith("!bbotclear")) {
-							messageQueue.push("!vanish")
+							processQueue("!vanish");
+							break;
+						}
+
+						if (messageText.startsWith("!dumpqueue")) {
+							mql = messageQueue.length;
+							logger(`${username} is dumping ${mql} messages`);
+							messageQueue.unshift(`Dumping ${mql} messages`);
 							processQueue();
 							break;
 						}
@@ -176,11 +184,9 @@ function handleWebSocketMessage(data, websocketClient) {
                         }
                     
                         const randomNumber = Math.floor(Math.random() * (max - min + 1)) + min;
-                        const message = `${prefix}: ${randomNumber}`;
                         
                         // Add message to queue
-                        messageQueue.push(message);
-                        processQueue();
+                        processQueue(`${prefix}: ${randomNumber}`);
 						break;
                     }
 
@@ -189,21 +195,22 @@ function handleWebSocketMessage(data, websocketClient) {
 						logger("Command isprime triggered by " + username)
 
                         const args = messageText.split(" ").slice(1); // Remove "!isprime"
+						let response = ''
                         
                         if (args.length === 0) {
-                            messageQueue.push("Please provide a number to check if it's prime.");
+                            response = "Please provide a number to check if it's prime.";
                         } else {
                             const number = parseInt(args[0], 10);
                             
                             if (isNaN(number) || number < 2) {
-                                messageQueue.push("Please provide a valid number greater than 1.");
+                                response = "Please provide a valid number greater than 1.";
                             } else {
                                 const isPrime = checkPrime(number);
-                                messageQueue.push(`${number} is ${isPrime ? "a prime number" : "not a prime number"}.`);
+                                response = `${number} is ${isPrime ? "a prime number" : "not a prime number"}.`;
                             }
                         }
                     
-                        processQueue();
+                        processQueue(response);
 						break;
                     }
 
@@ -223,41 +230,37 @@ function handleWebSocketMessage(data, websocketClient) {
 						];
 					
 						const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-						messageQueue.push(`@${username}, 🎱 ${randomResponse}`);
-						processQueue();
+						processQueue(`@${username}, 🎱 ${randomResponse}`);
 						break;
 					}                    
 
                     if (messageText == "!freaky") { 
 						logger("Command freaky triggered by " + username)                       
-                        messageQueue.push("😏");
-                        processQueue();
+                        processQueue("😏");
 						break;
                     }
 					if (messageText == "!balls") {
 						logger("Command balls triggered by " + username)                    
-                        messageQueue.push("milimi3Hmph");
-                        processQueue();
+                        processQueue("milimi3Hmph");
 						break;
                     }
 					if (messageText == "!github") {
 						logger("Command github triggered by " + username)                    
-                        messageQueue.push("BnuuyBot's code: https://github.com/iijj22gg/bnuuy-bot");
-                        processQueue();
+                        processQueue("BnuuyBot's code: https://github.com/iijj22gg/bnuuy-bot");
 						break;
                     }
 					if (messageText == "!raidmsg") {   
-						logger("Command raidmsg triggered by " + username)                     
-                        messageQueue.push("MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid");
-						messageQueue.push("MILIRAID 🐰 MILIRAID 🐰 MILIRAID 🐰 MILIRAID 🐰")
-                        processQueue();
+						logger("Command raidmsg triggered by " + username)
+						let msgList = []                   
+                        msgList.push("MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid");
+						msgList.push("MILIRAID 🐰 MILIRAID 🐰 MILIRAID 🐰 MILIRAID 🐰")
+                        processQueue(msgList);
 						break;
                     }
 
 					if (messageText == "!commands") {  
 						logger("Command list triggered by " + username)                      
-                        messageQueue.push("Command list: 8ball balls commands freaky github isprime raidmsg rng");
-                        processQueue();
+                        processQueue("Command list: 8ball balls commands freaky github isprime raidmsg rng");
 						break;
                     }
 
@@ -267,9 +270,8 @@ function handleWebSocketMessage(data, websocketClient) {
 					if (messageText === "SCATTER") {	
 						logger("SCATTER triggered by " + username)			
 						if (now - lastScatterTime >= SCATTER_COOLDOWN) {
-							messageQueue.push("SCATTER");
 							lastScatterTime = now;
-							processQueue();
+							processQueue("SCATTER");
 							break; 
 						}
 					}
@@ -278,8 +280,7 @@ function handleWebSocketMessage(data, websocketClient) {
 						logger("Cutting board triggered by " + username)
 						const cutMessage = cuttingBoards[Math.floor(Math.random() * cuttingBoards.length)]
 							.replace("{user}", "@" + username);
-						messageQueue.push(cutMessage);
-						processQueue();
+						processQueue(cutMessage);
 						break;
 					}
 
@@ -288,12 +289,10 @@ function handleWebSocketMessage(data, websocketClient) {
 						if (hydrateTimeout) clearTimeout(hydrateTimeout); 
 						hydrateTimeout = setTimeout(() => {
 							logger("Hydrate timeout reached")
-							messageQueue.push('No one has hydrated Mili for 30 minutes! milimi3Nervous')
-							processQueue()
+							processQueue('No one has hydrated Mili for 30 minutes! milimi3Nervous')
 							hydrateTimeout = setTimeout(() => {
 								logger('Hydrate timout 2 reached')
-								messageQueue.push('No one has hydrated Mili for 1 hour! milimi3Cry')
-								processQueue()
+								processQueue('No one has hydrated Mili for 1 hour! milimi3Cry')
 							}, 1800000)
 						}, 1800000);
 						break
@@ -312,8 +311,7 @@ function handleWebSocketMessage(data, websocketClient) {
 					}
 					if (messagePhrases.length > 0) {
 						logger("Phrase triggered by " + username + ": " + messagePhrases.join(' '))
-						messageQueue.push(messagePhrases.join(' '))
-						processQueue()
+						processQueue(messagePhrases.join(' '))
 						break;
 					}
 					
@@ -326,8 +324,7 @@ function handleWebSocketMessage(data, websocketClient) {
 						const randomGreeting = greetingMessages[Math.floor(Math.random() * greetingMessages.length)]
 							.replace("{user}", username);
 		
-						messageQueue.push(randomGreeting);
-						processQueue();
+						processQueue(randomGreeting);
 					}
 
 					
@@ -351,21 +348,28 @@ function checkPrime(num) {
     return true;
 }
 
-function processQueue() {
-	if (messageQueue.length === 0) return; // Exit if the queue is empty
+async function processQueue(message) {
+	message && messageQueue.push(...(Array.isArray(message) ? messages : [message])); // If message is truthy, convert message to list and push it
+	
+	if (messageQueue.length === 0 || isProcessing) return;
+    isProcessing = true;
 
-    const now = Date.now();
+    while (messageQueue.length > 0) {
+		const now = Date.now();
+		messageTimestamps = messageTimestamps.filter(timestamp => now - timestamp < TIME_WINDOW); // Remove timestamps older than TIME_WINDOW
+		
+		if (messageTimestamps.length >= MESSAGE_LIMIT) {
+			const delay = messageTimestamps[0] + TIME_WINDOW - now;
+			await new Promise(resolve => setTimeout(resolve, delay));
+			continue;
+		};
 
-    // Remove timestamps older than 30 seconds
-    messageTimestamps = messageTimestamps.filter(timestamp => now - timestamp < TIME_WINDOW);
+		sendChatMessage(messageQueue.shift());
+        messageTimestamps.push(now);
 
-    if (messageTimestamps.length < MESSAGE_LIMIT) {
-            sendChatMessage(messageQueue.shift());
-            messageTimestamps.push(now); // Timestamp
-			processQueue();
-    } else {
-        setTimeout(processQueue, (messageTimestamps[0] + TIME_WINDOW - now));
-    }
+	}
+	
+	isProcessing = false;
 }
 
 async function sendChatMessage(chatMessage) {
