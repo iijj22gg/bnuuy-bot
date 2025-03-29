@@ -15,6 +15,8 @@ let keepaliveTimeout
 let keepAliveCount = 0
 
 // Bot definitions
+let websocketClient
+
 let messageQueue = [];
 isProcessing = false
 
@@ -58,30 +60,35 @@ const ignoredUsers = new Set(["streamelements", "sery_bot", "cutebnuuybot"]);
 
 // Websocket Handlers
 
-async function startWebSocketClient() {
+async function startWebSocketClient(url) {
+	let currentURL = EVENTSUB_WEBSOCKET_URL
+	if (url) currentURL = url
 
     await auth.validateAuth();
 
-	let websocketClient = new WebSocket(EVENTSUB_WEBSOCKET_URL);
+	const newWebsocket = new WebSocket(currentURL);
 
-	websocketClient.on('error', console.error);
+	newWebsocket.on('error', console.error);
 
-	websocketClient.on('open', () => {
-		logger('WebSocket connection opened to ' + EVENTSUB_WEBSOCKET_URL);
+	newWebsocket.on('open', () => {
+		logger('WebSocket connection opened to ' + currentURL);
 	});
 
-	websocketClient.on('message', (data) => {
-		handleWebSocketMessage(JSON.parse(data.toString()), websocketClient);
+	newWebsocket.on('message', (data) => {
+		handleWebSocketMessage(JSON.parse(data.toString()), newWebsocket, currentURL);
 	});
 
-	websocketClient.on('close', (code, reason) => {
+	newWebsocket.on('close', (code, reason) => {
+		if ([4003, 4035].includes(code)) {
+			logger('Unused socket closed');
+			return;
+		}
 		logger(`WebSocket closed with code ${code}: ${reason}`, 'error')
+		setTimeout(() => startWebSocketClient(), 5000)
 	});
-
-	return websocketClient;
 }
 
-function handleWebSocketMessage(data, websocketClient) {
+function handleWebSocketMessage(data, currentWSclient, url) {
 	
 	switch (data.metadata.message_type) {
 		case 'session_welcome':
@@ -89,13 +96,19 @@ function handleWebSocketMessage(data, websocketClient) {
 			keepaliveDuration = data.payload.session.keepalive_timeout_seconds;
 
 			// Listen to EventSub
-			registerEventSubListeners();
-			resetKeepAlive(websocketClient);
+			if (websocketClient) {websocketClient.close(4035)} else if (url == EVENTSUB_WEBSOCKET_URL) {registerEventSubListeners()};
+			websocketClient = currentWSclient;
+			resetKeepAlive(currentWSclient);
 			break;
 		
 		case 'session_keepalive':
 			keepAliveCount++
 			logger(`[KeepAlive] #${keepAliveCount}`, 'blank', 1);
+			break;
+		
+		case 'session_reconnect':
+			logger('Reconnect received');
+			startWebSocketClient(data.payload.session.reconnect_url);
 			break;
 		
 		case 'notification':
@@ -105,6 +118,7 @@ function handleWebSocketMessage(data, websocketClient) {
 					
 					const username = data.payload.event.chatter_user_login;
     				const messageText = data.payload.event.message.text.trim();
+					const broadcasterID = data.payload.event.broadcaster_user_id;
 
 					const now = Date.now()
 					let previousChatTimestamp = lastChatTimestamp
@@ -349,7 +363,7 @@ function checkPrime(num) {
 }
 
 async function processQueue(message) {
-	message && messageQueue.push(...(Array.isArray(message) ? messages : [message])); // If message is truthy, convert message to list and push it
+	message && messageQueue.push(...(Array.isArray(message) ? message : [message])); // If message is truthy, convert message to list and push it
 	
 	if (messageQueue.length === 0 || isProcessing) return;
     isProcessing = true;
@@ -434,11 +448,11 @@ async function registerEventSubListeners() {
 	}
 }
 
-function resetKeepAlive(websocketClient) {
+function resetKeepAlive(wsc) {
 	if (keepaliveTimeout) clearTimeout(keepaliveTimeout);
 	keepaliveTimeout = setTimeout(() => {
 		logger("Keepalive timed out.", 'warn')
-		websocketClient.close(4000, "Keepalive timeout");
+		wsc.close(4000, "Keepalive timeout");
 	}, keepaliveDuration * 1000 * 2)
 }
 
