@@ -96,7 +96,8 @@ function handleWebSocketMessage(data, currentWSclient, url) {
 			keepaliveDuration = data.payload.session.keepalive_timeout_seconds;
 
 			// Listen to EventSub
-			if (websocketClient) {websocketClient.close(4035)} else if (url == EVENTSUB_WEBSOCKET_URL) {registerEventSubListeners()};
+			if (websocketClient && websocketClient.readyState === WebSocket.OPEN) {websocketClient.close(4035)};
+			if (url == EVENTSUB_WEBSOCKET_URL) {registerEventSubListeners()};
 			websocketClient = currentWSclient;
 			resetKeepAlive(currentWSclient);
 			break;
