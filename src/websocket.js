@@ -122,8 +122,6 @@ function handleWebSocketMessage(data, currentWSclient, url) {
 					const broadcasterID = data.payload.event.broadcaster_user_id;
 
 					const now = Date.now()
-					let previousChatTimestamp = lastChatTimestamp
-					lastChatTimestamp = now;
 
 					if (chatTimeout) clearTimeout(chatTimeout);
 					chatTimeout = setTimeout(() => {
@@ -170,6 +168,9 @@ function handleWebSocketMessage(data, currentWSclient, url) {
 					if (ignoredUsers.has(username) || !commandsEnabled) {
                         break;
                     }
+
+					let previousChatTimestamp = lastChatTimestamp
+					lastChatTimestamp = now;
                     
 
 
