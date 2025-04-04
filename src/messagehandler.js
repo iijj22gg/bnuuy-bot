@@ -1,5 +1,6 @@
 const auth = require("./auth")
 const env = require("./env")
+const { logger } = require("./logger")
 
 const MESSAGE_LIMIT = 100;
 const TIME_WINDOW = 30 * 1000; // 30 seconds
@@ -9,7 +10,7 @@ let messageQueue = [];
 isProcessing = false
 
 async function processQueue(message, bID) {
-	messageQueue.push(...(Array.isArray(message) ? message : [message])); // If message is truthy, convert message to list and push it
+	if (message) messageQueue.push(...(Array.isArray(message) ? message : [message])); // If message is truthy, convert message to list and push it
 	
 	if (messageQueue.length === 0 || isProcessing) return;
     isProcessing = true;

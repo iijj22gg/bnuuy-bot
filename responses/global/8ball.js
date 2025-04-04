@@ -17,6 +17,6 @@ module.exports = {
 		];
 					
 		const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-		processQueue(`@${username}, 🎱 ${randomResponse}`, data.broadcasterID);
+		processQueue(`@${data.username}, 🎱 ${randomResponse}`, data.broadcasterID);
     }
 }

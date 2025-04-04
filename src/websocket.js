@@ -20,9 +20,7 @@ let keepAliveCount = 0
 // Bot definitions
 let websocketClient
 
-let responseMaps = [
-	responses.globalResponses
-]
+let responseMaps = []
 
 const greetingMessages = [
     "milimi3Wiggle1",
@@ -121,6 +119,8 @@ function handleWebSocketMessage(data, currentWSclient, url) {
     				const messageText = data.payload.event.message.text.trim();
 					const broadcasterID = data.payload.event.broadcaster_user_id;
 
+					
+
 					const metadata = {
 						username: data.payload.event.chatter_user_login,
 						broadcasterID: data.payload.event.broadcaster_user_id
@@ -136,42 +136,16 @@ function handleWebSocketMessage(data, currentWSclient, url) {
 
 					if (ignoredUsers.has(username)) break;
 
-					if (!globals.getResponsesPaused()) {commandMaps = []}
-					else if (broadcasterID = env.CHAT_CHANNEL_USER_ID) commandMaps.push(responses.exclusiveResponses)
+					if (globals.getResponsesPaused()) {responseMaps = []}
+					else {
+						responseMaps = [responses.globalResponses]
+						if (broadcasterID == env.CHAT_CHANNEL_USER_ID) responseMaps.push(responses.exclusiveResponses)
+					}
 					
 					// Admin Commands
-					if (env.authorizedUsers.has(username)) {
-						commandMaps.push(responses.adminResponses)
-						if (messageText.startsWith("!enable")) {
-						
-							const statusMessage = commandsEnabled ? "Commands are already enabled." : "Commands are now enabled.";
-							commandsEnabled = true;
-							messageQueue = [statusMessage];
-							
-							processQueue();
-							break;
-						}
-	
-						if (messageText.startsWith("!disable")) {
-						
-							const statusMessage = commandsEnabled ? "Commands are now disabled." : "Commands are already disabled.";
-							commandsEnabled = false;
-							messageQueue = [statusMessage];
-							
-							processQueue();
-							break;
-						}
+					if (env.authorizedUsers.has(username)) responseMaps.push(responses.adminResponses)
 
-						if (messageText.startsWith("!dumpqueue")) {
-							mql = messageQueue.length;
-							logger(`${username} is dumping ${mql} messages`);
-							messageQueue.unshift(`Dumping ${mql} messages`);
-							processQueue();
-							break;
-						}
-					}
-
-					if (!commandMaps.length) break;
+					if (!responseMaps.length) break;
 
 					let previousChatTimestamp = lastChatTimestamp
 					lastChatTimestamp = now;
@@ -180,12 +154,11 @@ function handleWebSocketMessage(data, currentWSclient, url) {
 					for (const map of responseMaps) {
 						if (map && map.has(msgArgs[0])) {
 							map.get(msgArgs[0]).execute(metadata, msgArgs.slice(1))
-							let responseFound = true
+							responseFound = true
 							break;
 						}
 					}
-					if (responseFound === true) break;
-
+					if (responseFound === true || responseMaps.every(map => map === responses.adminResponses)) break;
 					
 					
 					// Phrases

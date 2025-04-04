@@ -2,27 +2,29 @@ const fs = require('fs');
 const path = require('path');
 
 const globalResponses = new Map()
-fs.readdirSync((dir = path.join(__dirname, './global/'))).forEach(file => {
+let dir = path.join(__dirname, 'global')
+fs.readdirSync(dir).forEach(file => {
     if (file.endsWith(".js") && file !=="index.js") {
-        const response = require(path.join(__dirname, file));
-        responses.set(response.name, response)
+        const response = require(path.join(dir, file));
+        globalResponses.set(response.name, response)
     }
 });
 
 const exclusiveResponses = new Map()
-let dir
-fs.readdirSync((dir = path.join(__dirname, './exclusive/'))).forEach(file => {
+dir = path.join(__dirname, 'exclusive')
+fs.readdirSync(dir).forEach(file => {
     if (file.endsWith(".js")) {
         const response = require(path.join(dir, file));
-        responses.set(response.name, response)
+        exclusiveResponses.set(response.name, response)
     }
 });
 
 const adminResponses = new Map()
-fs.readdirSync((dir = path.join(__dirname, './admin/'))).forEach(file => {
+dir = path.join(__dirname, 'admin')
+fs.readdirSync(dir).forEach(file => {
     if (file.endsWith(".js")) {
         const response = require(path.join(dir, file));
-        responses.set(response.name, response)
+        adminResponses.set(response.name, response)
     }
 });
 
