@@ -2,8 +2,11 @@ const WebSocket = require('ws');
 
 const env = require("./env")
 const auth = require("./auth")
+const globals = require("./globals")
 
 const { logger } = require("./logger")
+const { processQueue } = require("./messagehandler")
+const responses = require("../responses/index")
 
 // Main definitions
 const EVENTSUB_WEBSOCKET_URL = 'wss://eventsub.wss.twitch.tv/ws';
@@ -17,14 +20,9 @@ let keepAliveCount = 0
 // Bot definitions
 let websocketClient
 
-let messageQueue = [];
-isProcessing = false
-
-const MESSAGE_LIMIT = 100;
-const TIME_WINDOW = 30 * 1000; // 30 seconds
-let messageTimestamps = [];
-
-let commandsEnabled = true;
+let responseMaps = [
+	responses.globalResponses
+]
 
 const greetingMessages = [
     "milimi3Wiggle1",
@@ -41,12 +39,14 @@ let hydrateTimeout
 let chatTimeout
 
 // Command vars
-// Scatter
-let lastScatterTime = 0;
-const SCATTER_COOLDOWN = 60 * 1000; // 1 minute cooldown
 
 // Emote repeats
-const triggerPhrases = new Set(["milimi3Kiss", "milimi3Wiggle1", "milimi3Headpat", "milimi3Ghost1", "milimi3Stare", "milimi3Flicker", "milimi3Hype1", "milimi3Hallo", "milimi3Hmph", "milimi3Bleh", "milimi3Hydrate", "milimi3Bunbundancey", "milimi3Headpat", "milimi3Popcorn", "milimi3Lick", "milimi3Run", "milimi3Taptap", "milimi3Hug"]);
+const triggerPhrases = new Set([
+	"milimi3Kiss", "milimi3Wiggle1", "milimi3Headpat", "milimi3Ghost1", "milimi3Stare",
+	"milimi3Flicker", "milimi3Hype1", "milimi3Hallo", "milimi3Hmph", "milimi3Bleh",
+	"milimi3Hydrate", "milimi3Bunbundancey", "milimi3Headpat", "milimi3Popcorn", "milimi3Lick",
+	"milimi3Run", "milimi3Taptap", "milimi3Hug"
+]);
 const phraseCooldowns = {};
 const PHRASE_COOLDOWN = 60 * 1000; // 1 minute
 
@@ -121,15 +121,27 @@ function handleWebSocketMessage(data, currentWSclient, url) {
     				const messageText = data.payload.event.message.text.trim();
 					const broadcasterID = data.payload.event.broadcaster_user_id;
 
+					const metadata = {
+						username: data.payload.event.chatter_user_login,
+						broadcasterID: data.payload.event.broadcaster_user_id
+					};
+
 					const now = Date.now()
+					const msgArgs = messageText.split(' ')
 
 					if (chatTimeout) clearTimeout(chatTimeout);
 					chatTimeout = setTimeout(() => {
 						clearTimeout(hydrateTimeout)
 					}, 600000)
 
+					if (ignoredUsers.has(username)) break;
+
+					if (!globals.getResponsesPaused()) {commandMaps = []}
+					else if (broadcasterID = env.CHAT_CHANNEL_USER_ID) commandMaps.push(responses.exclusiveResponses)
+					
 					// Admin Commands
 					if (env.authorizedUsers.has(username)) {
+						commandMaps.push(responses.adminResponses)
 						if (messageText.startsWith("!enable")) {
 						
 							const statusMessage = commandsEnabled ? "Commands are already enabled." : "Commands are now enabled.";
@@ -150,11 +162,6 @@ function handleWebSocketMessage(data, currentWSclient, url) {
 							break;
 						}
 
-						if (messageText.startsWith("!bbotclear")) {
-							processQueue("!vanish");
-							break;
-						}
-
 						if (messageText.startsWith("!dumpqueue")) {
 							mql = messageQueue.length;
 							logger(`${username} is dumping ${mql} messages`);
@@ -164,134 +171,24 @@ function handleWebSocketMessage(data, currentWSclient, url) {
 						}
 					}
 
-					
-					if (ignoredUsers.has(username) || !commandsEnabled) {
-                        break;
-                    }
+					if (!commandMaps.length) break;
 
 					let previousChatTimestamp = lastChatTimestamp
 					lastChatTimestamp = now;
-                    
-
-
-					if (messageText.startsWith("!rng")) {
-						logger("Command RNG triggered by " + username)
-                        
-						const args = messageText.split(" ").slice(1); // Remove "!rng"
-                        let min = 1, max = 1000, prefix = "Random number";
-                        let rangeFound = false;
-                    
-                        for (let i = 0; i < args.length; i++) {
-                            // Join up to three tokens to detect "x - y" format
-                            const potentialRange = args.slice(i, i + 3).join("").replace(/\s/g, ""); // Remove spaces around '-'
-                            
-                            if (!rangeFound && /^\d+-\d+$/.test(potentialRange)) { // Check for "x-x" pattern
-                                let [low, high] = potentialRange.split("-").map(Number);
-                                if (low < high) { // Ensure valid range
-                                    min = low;
-                                    max = high;
-                                    rangeFound = true;
-                                    i += 2; // Skip next two elements since they are part of the range
-                                }
-                            } else { 
-                                prefix = args.slice(i).join(" "); // Everything after the range is the custom prefix
-                                break;
-                            }
-                        }
-                    
-                        const randomNumber = Math.floor(Math.random() * (max - min + 1)) + min;
-                        
-                        // Add message to queue
-                        processQueue(`${prefix}: ${randomNumber}`);
-						break;
-                    }
-
-                    if (messageText.startsWith("!isprime")) {
-						
-						logger("Command isprime triggered by " + username)
-
-                        const args = messageText.split(" ").slice(1); // Remove "!isprime"
-						let response = ''
-                        
-                        if (args.length === 0) {
-                            response = "Please provide a number to check if it's prime.";
-                        } else {
-                            const number = parseInt(args[0], 10);
-                            
-                            if (isNaN(number) || number < 2) {
-                                response = "Please provide a valid number greater than 1.";
-                            } else {
-                                const isPrime = checkPrime(number);
-                                response = `${number} is ${isPrime ? "a prime number" : "not a prime number"}.`;
-                            }
-                        }
-                    
-                        processQueue(response);
-						break;
-                    }
-
-					if (messageText.startsWith("!8ball")) {
-
-						logger("Command 8ball triggered by " + username)
-
-						const responses = [
-							"It is certain.", "Without a doubt.", "You may rely on it.", 
-							"Yes, definitely.", "It is decidedly so.", "As I see it, yes.", 
-							"Most likely.", "Yes.", "Outlook good.", "Signs point to yes.", 
-							"Reply hazy, try again.", "Better not tell you now.", 
-							"Ask again later.", "Cannot predict now.", "Concentrate and ask again.", 
-							"Don't count on it.", "My reply is no.", "My sources say no.", 
-							"Outlook not so good.", "Very doubtful.", "Ask Mili", "VoteYea", "VoteNay",
-							"Ask the mods"
-						];
 					
-						const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-						processQueue(`@${username}, 🎱 ${randomResponse}`);
-						break;
-					}                    
-
-                    if (messageText == "!freaky") { 
-						logger("Command freaky triggered by " + username)                       
-                        processQueue("😏");
-						break;
-                    }
-					if (messageText == "!balls") {
-						logger("Command balls triggered by " + username)                    
-                        processQueue("milimi3Hmph");
-						break;
-                    }
-					if (messageText == "!github") {
-						logger("Command github triggered by " + username)                    
-                        processQueue("BnuuyBot's code: https://github.com/iijj22gg/bnuuy-bot");
-						break;
-                    }
-					if (messageText == "!raidmsg") {   
-						logger("Command raidmsg triggered by " + username)
-						let msgList = []                   
-                        msgList.push("MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid MILIRAID milimi3Raid");
-						msgList.push("MILIRAID 🐰 MILIRAID 🐰 MILIRAID 🐰 MILIRAID 🐰")
-                        processQueue(msgList);
-						break;
-                    }
-
-					if (messageText == "!commands") {  
-						logger("Command list triggered by " + username)                      
-                        processQueue("Command list: 8ball balls commands freaky github isprime raidmsg rng");
-						break;
-                    }
+					let responseFound = false;
+					for (const map of responseMaps) {
+						if (map && map.has(msgArgs[0])) {
+							map.get(msgArgs[0]).execute(metadata, msgArgs.slice(1))
+							let responseFound = true
+							break;
+						}
+					}
+					if (responseFound === true) break;
 
 					
 					
 					// Phrases
-					if (messageText === "SCATTER") {	
-						logger("SCATTER triggered by " + username)			
-						if (now - lastScatterTime >= SCATTER_COOLDOWN) {
-							lastScatterTime = now;
-							processQueue("SCATTER");
-							break; 
-						}
-					}
-
 					if (messageText.toLowerCase().includes("cutting board") || messageText.toLowerCase().includes("chopping board")) {
 						logger("Cutting board triggered by " + username)
 						const cutMessage = cuttingBoards[Math.floor(Math.random() * cuttingBoards.length)]
@@ -355,66 +252,6 @@ function handleWebSocketMessage(data, currentWSclient, url) {
 
 }
 
-function checkPrime(num) {
-    for (let i = 2; i <= Math.sqrt(num); i++) {
-        if (num % i === 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
-async function processQueue(message) {
-	message && messageQueue.push(...(Array.isArray(message) ? message : [message])); // If message is truthy, convert message to list and push it
-	
-	if (messageQueue.length === 0 || isProcessing) return;
-    isProcessing = true;
-
-    while (messageQueue.length > 0) {
-		const now = Date.now();
-		messageTimestamps = messageTimestamps.filter(timestamp => now - timestamp < TIME_WINDOW); // Remove timestamps older than TIME_WINDOW
-		
-		if (messageTimestamps.length >= MESSAGE_LIMIT) {
-			const delay = messageTimestamps[0] + TIME_WINDOW - now;
-			await new Promise(resolve => setTimeout(resolve, delay));
-			continue;
-		};
-
-		sendChatMessage(messageQueue.shift());
-        messageTimestamps.push(now);
-
-	}
-	
-	isProcessing = false;
-}
-
-async function sendChatMessage(chatMessage) {
-	let response = await fetch('https://api.twitch.tv/helix/chat/messages', {
-		method: 'POST',
-		headers: {
-			'Authorization': 'Bearer ' + auth.getToken(),
-			'Client-Id': env.CLIENT_ID,
-			'Content-Type': 'application/json'
-		},
-		body: JSON.stringify({
-			broadcaster_id: env.CHAT_CHANNEL_USER_ID,
-			sender_id: env.BOT_USER_ID,
-			message: chatMessage
-		})
-	});
-
-	if (response.status == 401) {
-		await auth.refreshAuth();
-		await sendChatMessage(chatMessage);
-	}
-	else if (response.status != 200) {
-		let data = await response.json();
-		logger("Failed to send chat message", 'error');
-		console.error(data);
-	} else {
-		logger(`Sent message: ${chatMessage}`);
-	}
-}
 
 async function registerEventSubListeners() {
 	// Register channel.chat.message
