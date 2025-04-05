@@ -6,7 +6,7 @@ const globals = require("./globals")
 
 const { logger } = require("./logger")
 const { processQueue } = require("./messagehandler")
-const responses = require("../responses/index")
+const { responseMaps } = require("../responses/index")
 
 // Main definitions
 const EVENTSUB_WEBSOCKET_URL = 'wss://eventsub.wss.twitch.tv/ws';
@@ -20,7 +20,7 @@ let keepAliveCount = 0
 // Bot definitions
 let websocketClient
 
-let responseMaps = []
+let responseMapList = []
 
 const greetingMessages = [
     "milimi3Wiggle1",
@@ -136,29 +136,29 @@ function handleWebSocketMessage(data, currentWSclient, url) {
 
 					if (ignoredUsers.has(username)) break;
 
-					if (globals.getResponsesPaused()) {responseMaps = []}
+					if (globals.getResponsesPaused()) {responseMapList = []}
 					else {
-						responseMaps = [responses.globalResponses]
-						if (broadcasterID == env.CHAT_CHANNEL_USER_ID) responseMaps.push(responses.exclusiveResponses)
+						responseMapList = [responseMaps.global]
+						if (broadcasterID == env.CHAT_CHANNEL_USER_ID) responseMapList.push(responseMaps.exclusive)
 					}
 					
 					// Admin Commands
-					if (env.authorizedUsers.has(username)) responseMaps.push(responses.adminResponses)
+					if (env.authorizedUsers.has(username)) responseMapList.push(responseMaps.admin)
 
-					if (!responseMaps.length) break;
+					if (!responseMapList.length) break;
 
 					let previousChatTimestamp = lastChatTimestamp
 					lastChatTimestamp = now;
 					
 					let responseFound = false;
-					for (const map of responseMaps) {
+					for (const map of responseMapList) {
 						if (map && map.has(msgArgs[0])) {
 							map.get(msgArgs[0]).execute(metadata, msgArgs.slice(1))
 							responseFound = true
 							break;
 						}
 					}
-					if (responseFound === true || responseMaps.every(map => map === responses.adminResponses)) break;
+					if (responseFound === true || responseMapList.every(map => map === responseMaps.admin)) break;
 					
 					
 					// Phrases
