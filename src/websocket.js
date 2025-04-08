@@ -153,7 +153,14 @@ function handleWebSocketMessage(data, currentWSclient, url) {
 					let responseFound = false;
 					for (const map of responseMapList) {
 						if (map && map.has(msgArgs[0])) {
-							map.get(msgArgs[0]).execute(metadata, msgArgs.slice(1))
+							const daResponse = map.get(msgArgs[0])
+							try {
+								daResponse.execute(metadata, msgArgs.slice(1))
+							} catch (error) {
+								processQueue('@iijj22gg I made a mess come help me! milimi3Cry')
+								logger(`Command failed with ${error}`, 'error')
+							}
+							
 							responseFound = true
 							break;
 						}

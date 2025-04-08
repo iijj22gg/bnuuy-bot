@@ -38,8 +38,8 @@ function loadResponse(filePath) {
 function removeResponse(filePath) {
     const fullPath = path.resolve(__dirname, filePath);
     const dirName = path.basename(path.dirname(fullPath));
-    const responseName = Object.keys(require.cache).includes(require.resolve(filePath))
-        ? require(filePath).name
+    const responseName = require.cache[fullPath]
+        ? require.cache[fullPath].exports.name
         : null;
 
     if (responseName && responseMaps[dirName]) {
@@ -47,7 +47,7 @@ function removeResponse(filePath) {
         logger(`🗑️ Removed ${responseName} from ${dirName}`);
     }
 
-    delete require.cache[require.resolve(filePath)];
+    delete require.cache[fullPath];
 }
 
 
