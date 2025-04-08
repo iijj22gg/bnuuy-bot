@@ -4,3 +4,5 @@ logs/
 .DS_Store
 dist/
 tokens.json
+vars/*
+!vars/.keep

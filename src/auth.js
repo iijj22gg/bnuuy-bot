@@ -1,5 +1,6 @@
 const http = require("http")
 const fs = require("fs");
+const path = require("path")
 const qs = require("querystring")
 
 const env = require("./env")
@@ -12,7 +13,7 @@ let tokenExpiration = 0;
 const SCOPES = "user:bot user:read:chat user:write:chat";
 const REDIRECT_URI = "http://localhost:3000"
 
-const TOKEN_FILE = "tokens.json";
+const TOKEN_FILE = path.resolve("./vars/tokens.json");
 
 async function validateAuth() {
 
